@@ -333,6 +333,7 @@ Instant { t: 177509.7667705s } - local task performed in thread 1
 En analysant l'output, on voit que le thread numero 1 est celui qui ingère la requête et qui a donc sa deque remplit avec ses 10 tâches. A la passe t=177503 on a donc la requête qui est ingérée par le thread 1 puis le thread 1 éxécute une des tâches et les autres threads, 0, 2 et 3, volent une tâche au thread 1 et l'éxécutent. Il s'écoule 2 secondes. A la passe t=177505 le thread 1 repioche une tâche locale et les autres volent une tâche au thread 1, tous l'éxécutent et pendant l'éxécution on a les 2 nouvelles requêtes qui sont déclarées. A partir de maintenant, les tâches de la première requête ne peuvent plus être volées étant donnée la latence et le temps écoulé. On a donc dans le système :
 * 2 tâches de la première requête dans la deque du thread 1, qui ne peuvent plus être volées
 * 2 requêtes dans la queue globale
+
 A la passe t=177507 on a donc le thread 1 qui éxécute une de ses tâches et les autres threads qui se répartissent les tâches des nouvelles requêtes, complétant ainsi ces deux requêtes en environ 3 secondes, càd en moins de temps que la latence !
 A la passe t=177509 on a seulement le thread 1 qui s'occupe de sa dernière tâche restante et on a ainsi tout bouclé.
 

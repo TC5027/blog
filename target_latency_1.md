@@ -1,18 +1,20 @@
 # TARGET_LATENCY_1
 
-Les requêtes que l'on va considérer sont des opérations ```forall``` (présentant bien de l'intra-parallélisme). Pour cette opération, on va se restreindre à répéter une tâche un certain nombre de fois, les tâches étant indépendantes les unes des autres. La signature devient
+The requests we will consider are ```forall``` operations (presenting intra-parallelism). For this operation, we will limit ourselves to repeting a task X times, tasks being independent from each other. The signature becomes
 ```rust
 pub fn forall<T: Fn()>(&mut self, repetitions : usize, task : T) 
 ```
-Cette requête doit etre rendue disponible dans une queue globale pour les requêtes, définie en field de ```Threadpool```. On utilise ```VecDeque``` pour simuler le comportement de queue avec les méthodes ```push_back``` et ```pop_front```.
-On modifie notre struct en 
+
+This request has to be made available in a global queue dedicated to requests, defined as a field of ```Threadpool```. We use ```VecDeque``` to simulate the queue's behavior thanks to ```push_back``` and ```pop_front```.
+We modify our struct into 
 ```rust
 struct Threadpool {
 	handlers: Vec<JoinHandle<()>>,
 	global_queue: VecDeque<dyn Fn()>,
 }
 ```
-A la compilation on a une erreur nous indiquant que pour ```dyn Fn()``` on a une taille inconnue à la compilation ce qui viole les règles du compilateur. L'astuce consiste à utiliser ```Box``` pour envoyer ça sur la heap et travailler ainsi sur un pointeur de taille connue à la compilation. On peut maintenant remplir (un peu) ```forall``` : 
+
+At compilation we find an error telling us that for ```dyn Fn()``` we have an unknown size at compilation which is forbidden by the compilator. The trick is to use ```Box``` to send this on the heap and work with a pointer of known size at compilation. We can now fill (partially) ```forall``` : 
 ```rust
 pub fn forall<T : Fn()>(&mut self, repetitions : usize, task : T) {
 	self.global_queue.push_back(Box::new(move || {
@@ -23,12 +25,13 @@ pub fn forall<T : Fn()>(&mut self, repetitions : usize, task : T) {
 	todo!()
 }
 ```
-On a à nouveau une erreur, sur le parametre ```T```, qui risque de ne pas vivre assez longtemps, on résoud ça de facon bête et méchante en donnant à ```T``` un lifetime ```'static``` afin d'indiquer que nos tâches vont vivre durant l'entièrete du programme.
 
-Maintenant, on veut que nos threads puissent accéder à cette queue. Nos threads sont régis par la fonction ```feed_and_execute``` et c'est donc à ce niveau qu'on va se servir dans la queue. Afin de faire cela on doit préciser que nos requêtes implémentent ```Send``` afin d'être déplacées vers des threads. On change donc le type à l'intérieur de notre queue en ```Box<dyn Fn()+Send+'static```. De plus étant donné qu'on doit partager notre queue entre plusieurs threads, on englobe celle-ci dans un ```Arc<Mutex<>>```. On crée un alias pour ce type : ```Shared```.
-A l'interieur de ```feed_and_execute``` on loop sur cette queue et on éxécute les requêtes que l'on récupère.
+We have another error on the ```T``` parameter, which risks to not live long enough. We solve this (brutally) by adding a ```'static``` lifetime to this parameter, saying our tasks will live for the entire lifetime of the running program.
 
-Le code est le suivant :
+Now, we want our threads to be able to access to this queue. They are governed by the function ```feed_and_execute``` and so it is at this level that we will interact with the queue. In order to do so we need to specify that our requests implement ```Send``` in order to be moved to threads. We change so the type inside our queue to ```Box<dyn Fn()+Send+'static```. Furthermore, given the fact that we have to share our queue between several threads, we encompass it inside an ```Arc<Mutex<>>```. We create an alias for this type : ```Shared```.
+Inside ```feed_and_execute``` we loop on the queue and execute the requests we get from it.
+
+The code is as following :
 ```rust
 use std::thread::{spawn,JoinHandle};
 use std::collections::VecDeque;

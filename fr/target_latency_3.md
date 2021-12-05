@@ -1,8 +1,10 @@
 # TARGET_LATENCY_3
 
-In this last part, we will build a mechanism to prevent tasks from a request having a time of execution greater than the target latency, to be stolen. That way, we let other threads free to process new requests. To go deeper on this subject I recommend the reading of this [paper](https://www.cse.wustl.edu/~angelee/home_page/papers/steal.pdf).
+Dans cette dernière partie on va mettre en place un méchanisme empéchant les requêtes ayant un temps total d'éxécution supérieur à la target_latency de voir leurs tâches pouvoir etre volées par un autre thread. Pour approfondir ce sujet, je recommande la lecture de ce [papier](https://www.cse.wustl.edu/~angelee/home_page/papers/steal.pdf). De cette manière on laisse des threads libres pour traiter des nouvelles requêtes qui aurait pu etre retardées par le traitement d'une requête traitée par tout le système alors qu'elle ne pouvait être accomplie dans le temps imparti.
 
-We need to measure time of execution of a request dispatched into its inner tasks. To do so, we create a struct dedicated to tasks ```Task```
+On doit donc mettre en place un moyen de mesurer le temps d'éxécution d'une requête dispatchée en différentes tâches. Pour ce faire, on va créer une nouvelle structure dédiée aux tâches : ```Task```
+Cette structure va ressembler à ça  :
+
 ```rust
 pub struct Task {
     inner_task : Box<dyn Fn() + Send + 'static>,
@@ -11,12 +13,12 @@ pub struct Task {
 }
 ```
 
-There is a field corresponding to the task to execute and a field corresponding to the moment the request responsible for this task has been declared. The thirds field corresponds to the number of tasks, originated from the father request, not yet executed.
+On a donc un champ correspondant à la tâche même à éxécuter et un champ qui correspond à l'instant où la requête d'où découle la tâche a été déclarée. Le troisième champ correspond au nombre de tâches, issues de la requête, encore présentes dans le système (càd pas encore éxécutées). 
 
-We will need 3 methods for this structure :
-* a constructor
-* a method to execute the task
-* a method to check if the task can be stolen or not
+On va avoir besoin de 3 méthodes pour cette struture : 
+*	un constructeur
+*	une méthode pour éxécuter la tâche
+*	une méthode pour savoir si la tâche peut etre volée ou pas
 
 ```rust
 impl Task {
@@ -38,9 +40,10 @@ impl Task {
 }
 ```
 
-In order to include this *controlled work stealing*, we need to change the level where the tasks are executed. Actually, with the current code, what we get from local deques is directly the function to execute. What we want to do now is rather fill deques with ```Task``` instances which we could first analyze and then maybe execute.
+Afin d'intégrer ce méchanisme de vol controlé, on doit changer le niveau auquel s'effectue l'éxécution d'une tâche. En effet, avec le code actuel, ce qu'on récupère des deque est directement une fonction à éxécuter. Ce qu'on va faire maintenant c'est plutot remplir les deques avec des instances de ```Task``` qu'on pourra d'abord analyser puis peut-être éxécuter.
 
-The alias ```LocaDeque``` becomes ```type  LocalDeque = Arc<Mutex<VecDeque<Task>>>;``` and we change ```forall```.
+L'alias ```LocalDeque``` devient donc ```type  LocalDeque = Arc<Mutex<VecDeque<Task>>>;``` et on change le code de ```forall```.
+
 ```rust
 pub fn forall<T: Fn() + Send + Clone + 'static>(&mut self, repetitions: usize, task: T) {
     let tasks_counter = self.tasks_counter.clone();
@@ -60,7 +63,8 @@ pub fn forall<T: Fn() + Send + Clone + 'static>(&mut self, repetitions: usize, t
 }
 ```
 
-Inside ```feed_and_execute``` we will now check if the stolen task can really be stolen and if that's not the case put it back to its original deque.
+Dans ```feed_and_execute``` on va maintenant contrôler le fait que la tâche qu'on vole peut effectivement l'être et si ce n'est pas le cas, la remettre dans sa deque d'origine.
+
 ```rust
 fn feed_and_execute(global_queue: Shared<VecDeque<Box<dyn Fn() + Send + 'static>>>, local_deques: Vec<LocalDeque>, tasks_counter: Arc<AtomicUsize>, local_index: usize) {
     let mut rng = thread_rng();
@@ -81,13 +85,13 @@ fn feed_and_execute(global_queue: Shared<VecDeque<Box<dyn Fn() + Send + 'static>
                     // if the task is stealable we execute it
                     if task.is_stealable() {
                         task.execute();
-                    }
+                    } 
                     // otherwise we put it back to its originated deque
                     else {
                         local_deques[index].lock().unwrap().push_back(task);
                     }
                 }
-            }
+            } 
             else {
                 let option_request = global_queue.lock().unwrap().pop_front();
                 if option_request.is_some() {
@@ -104,9 +108,9 @@ fn feed_and_execute(global_queue: Shared<VecDeque<Box<dyn Fn() + Send + 'static>
 }
 ```
 
-We are left with the ```Task```'s methods to define.
+Il ne nous reste enfin plus que les méthodes de ```Task``` à définir.
 
-For ```is_stealable```, we compare the elapsed time since ```request_declaration``` and if this time is greater or equal to a constant ```TARGET_LATENCY```, declared in our code like so : ```const TARGET_LATENCY: Duration = Duration::from_secs(4);```, then we decrement ```tasks_counter``` (passed as argument) of ```counter_left_tasks```. Doing so we are not blocked by these tasks in ```feed_and_execute```. We set to 0 ```counter_left_tasks``` and we output false. Otherwise, we simply output true.
+Pour ```is_stealable```, on compare le temps elapsed depuis ```request_declaration``` et si ce temps est supérieur ou égal à une constante ```TARGET_LATENCY``` déclarée dans le programme, par exemple à 4 secondes : ```const TARGET_LATENCY: Duration = Duration::from_secs(4);```, alors on décrémente le ```tasks_counter``` (passé en argument) de ```counter_left_tasks```, comme ça on est pas bloqué par ces tâches dans ```feed_and_execute```. On met à 0 ```counter_left_tasks```  et on renvoie ```false```. Dans le cas contraire on renvoie simplement ```true```.
 ```rust
 pub fn is_stealable(&self, tasks_counter: Arc<AtomicUsize>) -> bool {
     if self.request_declaration.elapsed() >= TARGET_LATENCY {
@@ -119,7 +123,7 @@ pub fn is_stealable(&self, tasks_counter: Arc<AtomicUsize>) -> bool {
 }
 ```
 
-For ```execute``` we simply perform the task itself and we decrement by 1 ```counter_left_tasks``` and ```tasks_counter``` passed as argument, if ```counter_left_tasks``` is not already set to 0.
+Pour ```execute```, on effectue la tâche en elle-même et on décrémente de 1 le ```counter_left_tasks``` ET et le ```tasks_counter``` passé en argument si ```counter_left_tasks``` n'est pas déja à 0.
 ```rust
 pub fn execute(self, tasks_counter: Arc<AtomicUsize>) {
     (self.inner_task)();
@@ -130,7 +134,7 @@ pub fn execute(self, tasks_counter: Arc<AtomicUsize>) {
 }
 ```
 
-Our final code :
+Notre code final :
 ```rust
 use std::boxed::Box;
 use std::cell::RefCell;
@@ -207,13 +211,13 @@ fn feed_and_execute(global_queue: Shared<VecDeque<Box<dyn Fn() + Send + 'static>
                     // if the task is stealable we execute it
                     if task.is_stealable(tasks_counter) {
                         task.execute(for_exec_tasks_counter);
-                    }
+                    } 
                     // otherwise we put it back to its originated deque
                     else {
                         local_deques[index].lock().unwrap().push_back(task);
                     }
                 }
-            }
+            } 
             // no more tasks in the system that we can steal so we pick a new request from
             // the global queue
             else {
@@ -289,7 +293,7 @@ impl Threadpool {
 }
 ```
 
-With the following ```main```
+avec le main suivant
 ```rust
 fn main() {
     let mut threadpool = Threadpool::new(4);
@@ -300,12 +304,12 @@ fn main() {
     sleep(std::time:uration::from_secs(8));
 }
 ```
-and adding prints to see which thread is executing thanks to ```local_index```
+et la target_latency de 4 secondes en indiquant l'origine du thread grâce au ```local_index``` dans les prints
 ```rust
 println!("{:?} - stolen task performed in thread {}", std::time::Instant::now(), local_index);
 ```
+on a l'output suivant :
 
-we get this output
 ```console
 PS C:\X\truct> cargo run
    Compiling truct v0.1.0 (C:\X\truct)
@@ -325,10 +329,11 @@ Instant { t: 177507.7570711s } - stolen task performed in thread 3
 Instant { t: 177507.7570736s } - local task performed in thread 0
 Instant { t: 177509.7667705s } - local task performed in thread 1
 ```
-Analyzing this output, we see that thread number 1 is the one ingesting the request. Its deque is so filled with the 10 tasks. At step t = 177503 the request is so ingested by thread 1 then thread 1 execute one of its task and the other threads, 0, 2 and 3 steal a task from thread 1 and execute it. 2 seconds elapse. At step t = 177505 the thread 1 picks again a task from its local deque and the others steal a task from thread 1. All the threads execute their dedicated task and during the execution the 2 new requests are declared. From now on, tasks from the first request can't be stolen anymore given the target latency and time elapsed since request's declaration. Inside the system there are :
-* 2 tasks from first request in thread 1's deque, which can't be stolen
-* 2 requests inside the global queue
 
-At step t = 177507 thread 1 executes a task from its deque and the other threads share tasks from new requests, executing them in approximately 3 seconds, so less than the target latency !
-At step t = 177509 thread 1 performs its last task and we are done
+En analysant l'output, on voit que le thread numero 1 est celui qui ingère la requête et qui a donc sa deque remplit avec ses 10 tâches. A la passe t=177503 on a donc la requête qui est ingérée par le thread 1 puis le thread 1 éxécute une des tâches et les autres threads, 0, 2 et 3, volent une tâche au thread 1 et l'éxécutent. Il s'écoule 2 secondes. A la passe t=177505 le thread 1 repioche une tâche locale et les autres volent une tâche au thread 1, tous l'éxécutent et pendant l'éxécution on a les 2 nouvelles requêtes qui sont déclarées. A partir de maintenant, les tâches de la première requête ne peuvent plus être volées étant donnée la latence et le temps écoulé. On a donc dans le système :
+* 2 tâches de la première requête dans la deque du thread 1, qui ne peuvent plus être volées
+* 2 requêtes dans la queue globale
+
+A la passe t=177507 on a donc le thread 1 qui éxécute une de ses tâches et les autres threads qui se répartissent les tâches des nouvelles requêtes, complétant ainsi ces deux requêtes en environ 3 secondes, càd en moins de temps que la latence !
+A la passe t=177509 on a seulement le thread 1 qui s'occupe de sa dernière tâche restante et on a ainsi tout bouclé.
 

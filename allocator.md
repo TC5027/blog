@@ -116,7 +116,7 @@ fn main() {
 }
 ```
 
-à l'aide de Windows Performance Recorder et Windows Performance Analyzer, on voit un nombre très conséquent d'allocations durant l'éxécution ![figurebad](https://github.com/TC5027/blog/blob/master/pngs/bad.png)
+à l'aide de Windows Performance Recorder et Windows Performance Analyzer, on voit un nombre très conséquent d'allocations durant l'éxécution ![figurebad](https://github.com/TC5027/blog/blob/master/pngs/bad.PNG)
 
 La méthode ```split_off``` qu'on utilise dans la dernière boucle de ```deserialize``` est responsable de tout ça. En effet quand on regarde son [code source](https://doc.rust-lang.org/src/alloc/vec/mod.rs.html#1928-1930) on voit que cela provoque la création d'un nouveau vecteur alloué quelquepart ( voir [1](https://doc.rust-lang.org/beta/src/alloc/raw_vec.rs.html#132) et [2](https://doc.rust-lang.org/beta/src/alloc/raw_vec.rs.html#170) ).
 En y réfléchissant, c'est un peu idiot de devoir faire une nouvelle allocation car tout est déja là vu qu'on a tout chargé depuis le disque !
@@ -259,6 +259,6 @@ where
 }
 ```
 En rejouant le même ```main``` qu'avant on voit que les nombreux calls à alloc ont disparu 
-![figuregood](https://github.com/TC5027/blog/blob/master/pngs/good.png)et le temps d'éxécution est diviser par plus de 10 !
+![figuregood](https://github.com/TC5027/blog/blob/master/pngs/good.PNG)et le temps d'éxécution est diviser par plus de 10 !
 !TODO détailler
 

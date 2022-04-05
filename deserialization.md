@@ -1,21 +1,21 @@
-# Design d'un allocateur personnalisé
+# Optimizing deserialization with an alternative to Vec
 
-On considère des données de taille dynamique, par exemple un vecteur d'octets.
-On pose l'alias suivant:
+We consider data of dynamic size, for example a vector of bytes.
+We set the following alias:
 
 ```rust
 type Bytes = Vec<u8>;
 ```
 
-On veut écrire ces données sur disque puis les recharger en mémoire
+We want to write these data on disk and then load them back to memory
 
-Pour les écrire sur disque (les sérialiser) on peut prendre l'approche suivante:
+To write them on disk (serialize) we can use this approach:
 
-* un header qui contient la taille totale de la séquence et le nombre de vecteurs représentés
-* les tailles des vecteurs, écrites successivement
-* les données même, toutes concaténées
+* a header containing the full size of the sequence and the number of vectors represented
+* sizes of the vectors, written successively
+* data itself, all concatenated
 
-La sérialisation peut donc se faire de cette manière:
+The serialization can be done that way:
 
 ```rust
 fn serialize(set_of_bytes: Vec<Bytes>) -> Vec<u8> {
@@ -42,7 +42,7 @@ fn serialize(set_of_bytes: Vec<Bytes>) -> Vec<u8> {
 }
 ```
 
-Et la désérialisation comme ceci:
+And the deserialization like so:
 
 ```rust
 fn deserialize1<R>(mut storage: R) -> Vec<Bytes>
@@ -81,7 +81,7 @@ where
 }
 ```
 
-On peut vérifier nos fonctions avec le ```main``` suivant:
+We can verify our functions with the following ```main```:
 
 ```rust
 fn main() {
@@ -95,7 +95,7 @@ fn main() {
 }
 ```
 
-Si on considère un ```main``` plus "imposant" comme celui-ci par exemple:
+Now, if we consider a scarier ```main``` like this one:
 
 ```rust
 fn main() {
@@ -113,31 +113,26 @@ fn main() {
 }
 ```
 
-Pour investiguer et mieux comprendre l'éxécution de mon programme je peux utiliser un flamegraph qui sert à visualiser les stack traces. Pour le lancer je fais préalablement les commandes suivantes :
+To investigate it and have a better understanding of what is happening, I can use a flamegraph which visualizes stack traces. Before running it, I do:
 ```cmd
 echo -1 | sudo tee /proc/sys/kernel/perf_event_paranoid
 echo 0 | sudo tee /proc/sys/kernel/kptr_restrict
 ```
 
-et ensuite je fais 
+and then
 ```cmd 
 cargo flamegraph
 ```
-qui me produit un joli .svg :D .
+which produces a pretty .svg :D .
 
 ![ouch](https://github.com/TC5027/blog/blob/master/pngs/bad.svg)
 
-Oula... Pour l'analyse, on voit que notre ```main``` passe beaucoup de temps au niveau de ```deserialize1``` et plus précisément au niveau de la méthode ```split_off``` de ```Vec```. On peut regarder son [code source](https://doc.rust-lang.org/src/alloc/vec/mod.rs.html#1928-1930) et on voit que cette méthode provoque la création d'un nouveau vecteur alloué ( voir [1](https://doc.rust-lang.org/beta/src/alloc/raw_vec.rs.html#132) et [2](https://doc.rust-lang.org/beta/src/alloc/raw_vec.rs.html#170) ). En y réfléchissant, c'est un peu idiot de devoir faire une nouvelle allocation car tout est déja là vu qu'on a tout chargé depuis le disque ! On a donc une consommation mémoire inutilement importante qui provoque surement les page fault que l'on voit dans le flamegraph et qui ont une part non négligeable !
-On voit donc qu'il se passe plein de choses dans le flamegraph, mais surement TROP considéré ce que l'on fait ? ```Vec``` ne semble pas etre la bonne piste pour cette désérialisation.
+Scary... For the analysis, we see that our ```main``` spends a lot of times in ```deserialize1```, more precisely in ```split_off``` from ```Vec```. Reading its [source code](https://doc.rust-lang.org/src/alloc/vec/mod.rs.html#1928-1930) we see that it leads to an allocation and a new vector ( see [1](https://doc.rust-lang.org/beta/src/alloc/raw_vec.rs.html#132) and [2](https://doc.rust-lang.org/beta/src/alloc/raw_vec.rs.html#170) ). If we think of it, it is a bit dumb in our case to perform a new allocation as we have already loaded everything from disk ! Because of this behaviour, we suffer from a uselessly huge memory consumption which surely is responsible for the page faults we highlight in the flamegraph.
+There is a lot happening as we see in the flamegraph, but there is surely TOO MUCH happening given our task ? ```Vec``` seems to be a bad idea for this deserialization.
 
-On aimerait pouvoir avoir un allocateur à qui l'on peut dire : "j'ai ce bout de mémoire que tu m'as donné, maintenant fait comme si c'était 2 allocations contigues"
-Faire simplement un allocateur répondant à ce besoin ne suffirait pas car ```Vec``` comme on l'a vu fait automatiquement un call alloc via sa méthode ```split_off```. On va donc faire un allocateur + une structure basée dessus, minimalistes, démontrant la faisabilité de ce qu'on cherche à faire.
+We propose ```SliceableBytes```, inspired from ```Vec``` but based on ```CustomAlloc```.
 
-Qu'est ce qu'un allocateur ? Son but est de gérer la mémoire et son attribution, il doit réquisitionner une région non occupée lors d'un call à ```alloc``` et en retourner avec un call à ```dealloc```.
-
-On propose ```SliceableBytes```, inspiré de ```Vec``` mais basé sur ```CustomAlloc```.
-
-```SliceableBytes``` comprend donc, à la manière de ```raw_vec```, un champ pointant le début des données, une taille de plage et un allocateur pour gérer la mémoire.
+```SliceableBytes``` contains, just like ```raw_vec```, a field pointing to the beginning of the data, a size and an allocator to handle memory.
 
 ```rust
 #[derive(Debug)]
@@ -147,7 +142,7 @@ struct SliceableBytes {
     allocator: Rc<RefCell<CustomAlloc>>,
 }
 ```
-Ce ```SliceableBytes``` a à sa création une instance de ```CustomAlloc``` qui lui est attribuée. Ensuite, les ```SliceableBytes``` issus de ce premier, qu'on obtiendra à partir d'appels à ```split```, partagerons avec le premier cette instance de ```CustomAlloc``` (pour cela qu'on wrap ```CustomAlloc``` dans un ```Rc<Refcell<>>``` afin de le partager et de rendre les modifications faites par un ```SliceableBytes``` visible pour tous). ```CustomAlloc``` lui, n'est dans le fond qu'un compteur de ```SliceableBytes```, gérant une zone mémoire déja allouée par l'allocateur ```Global```.
+This ```SliceableBytes``` has at creation, an instance of ```CustomAlloc``` assigned to it. Then, the ```SliceableBytes``` from this first one, which will be obtained through calls to ```split```, whill share with the first the instance of ```CustomAlloc``` (that's why we wrap it inside a ```Rc<Refcell>>``` to share it and make modifications visible to all). ```CustomAlloc``` is just a counter of ```SliceableBytes```, handling a part of the memory already allocated by ```Global``` allocator.
 ```rust
 #[derive(Debug)]
 struct CustomAlloc {
@@ -155,9 +150,9 @@ struct CustomAlloc {
     counter: usize,
 }
 ```
-Avec un call à ```alloc``` on met le compteur à 1 et lorsque le compteur est à 0 et qu'on a donc plus d'utilisation, on drop tout.
-On a donc un usage un peu batard de ```CustomAlloc```, ce n'est pas un allocateur global mais plutot un allocateur pour une plage qu'on a reçu de l'allocateur ```Global``` et dont on assure la gestion avec ```CustomAlloc```.
-Pour construire un ```SliceableBytes```, étant donné notre usage, on prend en entrée un vecteur d'u8, chargé depuis le disque, qu'on veut pouvoir découper. On récupère la taille du vecteur pour l'argument size et on passe ensuite le vecteur au constructeur de ```CustomAlloc```. Le vecteur d'u8, alloué par l'allocateur ```Global``` va maintenant etre géré par ```CustomAlloc``` qui s'en sert un peu comme d'un bac à sable. On a finalement un call à ```alloc``` qui nous donne le start et voila.
+With a call to ```alloc``` we set the counter to 1 and when this counter is at 0, meaning we have no more usages, we drop.
+We have a strange usage for ```CustomAlloc```, it is not a global allocator but more an handler for a band of memory which was obtained from ```Global``` allocator and which we manage with ```CustomAlloc```.
+To build a ```SliceableBytes```, given our usecase, we take as input a vector of u8, loaded from disk, that we want to slice. We get the size of the vector for the size field and we give this vector to the constructor for ```CustomAlloc```. The vector of u8, allocated by the ```Global``` allocator will now be managed by ```CustomAlloc``` which uses it like a memory-playground. Finally we have a call to ```alloc``` which gives us the start and that's it.
 ```rust
 impl SliceableBytes {
     pub fn new(to_be_sliced: Vec<u8>) -> Self {
@@ -172,7 +167,7 @@ impl SliceableBytes {
     }
 }
 ```
-Au niveau de ```CustomAlloc``` on prend simplement le controle du vecteur et on initialise le compteur à 0. ```alloc``` qui indique qu'on s'en sert met lui le compteur à 1 et renvoie le début de la plage.
+At the level of ```CustomAlloc```, we simply take ownership of the vector and we initialize the counter to 0. ```alloc```, which indicates that we have a usage, sets the counter to 1 and returns the beginning of the band.
 ```rust
 impl CustomAlloc {
     pub fn new(playground: Vec<u8>) -> Self { 
@@ -188,9 +183,9 @@ impl CustomAlloc {
     }
 }
 ```
-La seconde méthode qui fait tout l'intéret de ```SliceableBytes``` est ```split```, qui en retourne une nouvelle instance.
+The second method, the key one, is ```split``` which returns a new ```SliceableBytes```.
 
-On effectue un test sur la faisabilité de cette coupe étant donné la taille de notre plage et on appelle ensuite la méthode ```split``` de notre allocateur. On met à jour notre size et on renvoie un nouveau ```SliceableBytes``` correspondant à la droite de la coupe (l'original étant maintenant la gauche de celle-ci).
+We perform a test of feasibility for this cut given the size, and then we call the ```split``` method of our allocator. We update the size and we return a new ```SliceableBytes``` corresponding to the right side of the cut.
 ```rust
 pub fn split(&mut self, index: usize) -> SliceableBytes {
     assert!(index <= self.size);
@@ -204,13 +199,13 @@ pub fn split(&mut self, index: usize) -> SliceableBytes {
     }
 }
 ```
-Au niveau de ```CustomAlloc```, ```split``` n'est qu'une incrémentation du compteur, on a une instance en plus qui utilise le playground.
+At the level of ```CustomAlloc```, ```split``` is just an incrementation of the counter, we have another instance using the playground.
 ```rust
 pub fn split(&mut self) {
     self.counter += 1;
 }
 ```
-Enfin on implémente ```Drop``` pour ```SliceableBytes``` en appelant le ```dealloc``` de ```CustomAlloc```.
+Finally, we implement ```Drop``` for ```SliceableBytes``` by calling ```CustomAlloc```'s ```dealloc```.
 ```rust
 impl Drop for SliceableBytes {
     fn drop(&mut self) {
@@ -218,7 +213,7 @@ impl Drop for SliceableBytes {
     }
 }
 ```
-et ```dealloc``` de ```CustomAlloc``` fait un test sur son compteur et s'il n'y a plus d'usage ```drop``` également
+and ```dealloc``` of ```CustomAlloc``` does a check on its counter, and ```drop``` if there is no more usage
 ```rust
 pub fn dealloc(&mut self) {
     self.counter -= 1;
@@ -227,7 +222,7 @@ pub fn dealloc(&mut self) {
     }
 }
 ```
-On peut maintenant revoir notre code de deserialize en utilisant cette nouvelle structure ```SliceableBytes```
+We can now update the code for deserialization using this new struct ```SliceableBytes```
 
 ```rust
 fn deserialize2<R>(mut storage: R) -> Vec<SliceableBytes>
@@ -269,6 +264,6 @@ where
 }
 ```
 
-En rejouant le même ```main``` qu'avant, on voit comme preuve de notre réussite que le flamegraph s'est considérablement simplifié, on passe de 700 samples pour all à 7.
+Replaying the same ```main``` than before, we see as a proof of our success that the flamegraph is now much simpler, we went from 700 samples to 7.
 
-![mieux](https://github.com/TC5027/blog/blob/master/pngs/good.svg)
+![better](https://github.com/TC5027/blog/blob/master/pngs/good.svg)

@@ -364,7 +364,7 @@ on a comme résultat avec ```time``` **0m2,434s** !
 
 ## Lindenmayer
 
-Pour poursuivre notre optimisation, on peut remarquer que deux entiers successifs partagent un suffixe commun pour ce qui est de leurs représentations binaires. Ainsi avec notre fonction pour calculer la transformée inverse, on a des transitions similaires ce qui est donc une perte de temps, on répète les mêmes transitions entre deux appels successifs, et pourrait donc etre optimiser.
+Pour poursuivre notre optimisation, on peut remarquer que deux entiers successifs partagent un préfixe commun pour ce qui est de leurs représentations binaires. Ainsi avec notre fonction pour calculer la transformée inverse, on a des transitions similaires ce qui est donc une perte de temps, on répète les mêmes transitions entre deux appels successifs, et pourrait donc etre optimiser.
 
 Le papier [suivant](https://eprints.cs.univie.ac.at/5726/1/loops.pdf) présente un système de Lindenmayer pour palier à ce problème. Le code pour ça se trouve [ici](https://github.com/TC5027/matmul_singlethread) et on a comme résultat avec ```time``` pour ```half_log_grid_size = 11``` **0m1,894s**. :)
 

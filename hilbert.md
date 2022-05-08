@@ -366,6 +366,6 @@ we get as result with ```time``` **0m2,434s** !
 
 ## Lindenmayer
 
-To go on with our optimization, we can notice that two consecutive integers share a common suffix regarding their binary representation. Because of it, our function to compute the inverse transform performs similar initial transition for the two, which is a waste of time.
+To go on with our optimization, we can notice that two consecutive integers share a common prefix regarding their binary representation. Because of it, our function to compute the inverse transform performs similar initial transition for the two, which is a waste of time.
 
 This [paper](https://eprints.cs.univie.ac.at/5726/1/loops.pdf) presents a Lindenmayer system to answer our need. My code for this is [here](https://github.com/TC5027/matmul_singlethread) and we have a result of **0m1,894s** for ```half_log_grid_size = 11``` :)

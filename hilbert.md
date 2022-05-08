@@ -91,7 +91,7 @@ We see from this result that it is not optimal, indeed we multiply lines with co
 
 To better navigate the data, we can first transpose the second matrix to only work on lines !
 
-$c_{i,j} = \sum_{k}a_{i,k}b_{k,j} = \sum_{k}a_{i,k}b_{j,k}^T$
+<img src="https://render.githubusercontent.com/render/math?math=c_{i,j} = \sum_{k}a_{i,k}b_{k,j} = \sum_{k}a_{i,k}b_{j,k}^T">
 
 We add a transposition operation to our struct ```Matrix```
 ```rust
@@ -149,26 +149,29 @@ fn main() {
 With ```time``` we get a result of **0m0,780s** and with ```cachegrind``` **D1  miss rate:            3.2% (          3.1%     +      46.8%  )**. We see that with the capacity to transpose, we can drastically improve the performances even though we add work to perform the transposition itself.
 
 Still we can improve cache usage.
-Right now we navigate first $c_{0,0}$ then $c_{0,1}$ etc.
-If we sum up the lines we use for the first 4 values of $c_{i,j}$ we have:
-* $c_{0,0}$ needs $a_{0,*}$ and $b_{0,*}$
-* $c_{0,1}$ needs $a_{0,*}$ and $b_{1,*}$
-* $c_{0,2}$ needs $a_{0,*}$ and $b_{2,*}$
-* $c_{0,3}$ needs $a_{0,*}$ and $b_{3,*}$
+Right now we navigate first c_{0,0} then c_{0,1} etc.
+If we sum up the lines we use for the first 4 values of c_{i,j} we have:
+* c_{0,0} needs a_{0,} and b_{0,}
+* c_{0,1} needs a_{0,} and b_{1,}
+* c_{0,2} needs a_{0,} and b_{2,}
+* c_{0,3} needs a_{0,} and b_{3,}
 
-We require 5 different lines : $a_{0,*};b_{0,*};b_{1,*};b_{2,*};b_{3,*}$
+We require 5 different lines : a_{0,};b_{0,};b_{1,};b_{2,};b_{3,}
 
-If we imagine another navigation for the $c_{i,j}$ which would produce as the 4 first values : $c_{0,0},c_{0,1},c_{1,1},c_{1,0}$ we would have:
-* $c_{0,0}$ needs $a_{0,*}$ and $b_{0,*}$
-* $c_{0,1}$ needs $a_{0,*}$ and $b_{1,*}$
-* $c_{1,1}$ needs $a_{1,*}$ and $b_{1,*}$
-* $c_{1,0}$ needs $a_{1,*}$ and $b_{0,*}$
+If we imagine another navigation for the $c_{i,j}$ which would produce as the 4 first values : c_{0,0},c_{0,1},c_{1,1},c_{1,0} we would have:
+* c_{0,0} needs a_{0,} and b_{0,}
+* c_{0,1} needs a_{0,} and b_{1,}
+* c_{1,1} needs a_{1,} and b_{1,}
+* c_{1,0} needs a_{1,} and b_{0,}
 
-We would have not 5 but 4 different lines required in that case : $a_{0,*};a_{1,*}; b_{0,*};b_{1,*}$ which is better regarding the cache !
+We would have not 5 but 4 different lines required in that case : a_{0,};a_{1,};b_{0,};b_{1,} which is better regarding the cache !
 
 ## Hilbert
 
-We will use Hilbert curbe in order to navigate space more efficiently for cache. To compute the invert of the Hilbert transform we can use the following automata : ![automata](https://github.com/TC5027/blog/blob/master/pngs/automata.png)
+We will use Hilbert curbe in order to navigate space more efficiently for cache. To compute the invert of the Hilbert transform we can use the following automata : 
+
+![automata](https://github.com/TC5027/blog/blob/master/pngs/automata.png)
+
 I represented the automata like an enum with the states being its variants, implementing a function of transition ```next``` :
 
 ```rust

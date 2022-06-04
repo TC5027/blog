@@ -276,9 +276,6 @@ impl Threadpool {
             .push_back(Box::new(move || {
                 local_deque.with(|deque| {
                     let counter_left_tasks = Arc::new(AtomicUsize::new(repetitions));
-                    deque.borrow_mut().lock().unwrap().push_back(Task::new(Box::new(move || {
-                    }),request_declaration, counter_left_tasks.clone()));
-                    
                     for _ in 0..repetitions {
                         deque.borrow_mut().lock().unwrap().push_back(Task::new(task.clone(), request_declaration, counter_left_tasks.clone()));
                     }

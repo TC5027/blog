@@ -159,27 +159,27 @@ Associated repository with the code : https://github.com/TC5027/rust_stuff/tree/
 
 The results we get surrounding the calls to ```update_X``` with ```std::time::Instant::now()``` and ```.elasped()```
 
-update_1 -> 475.314129ms 474.022887ms 487.448066ms 476.663291ms 521.97216ms
-update_2 -> 297.573154ms 296.91471ms 307.319173ms 291.371916ms 315.54673ms
-update_3 -> 1.362059389s 965.599649ms 966.835205ms 1.076025605s 977.364906ms
+* update_1 -> 483.44ms (min 474.022887ms | max 521.97216ms)
+* update_2 -> 301.72ms (min 291.371916ms | max 315.54673ms)
+* update_3 -> 1069.58ms (min 965.599649ms | max 1362.059389ms)
 
 There are huge differences in the results but do we measure the same thing everytime ?
 
 To inspect that we can use ```cargo flamegraph```, here is what we get
 
-![FirstVersion](https://github.com/TC5027/blog/blob/master/pngs/flamegraph(update_1).svg)](https://github.com/TC5027/blog/blob/master/pngs/flamegraph(update_1).svg)
+[![FirstVersion](https://github.com/TC5027/blog/blob/master/pngs/flamegraph(update_1).svg)](https://github.com/TC5027/blog/blob/master/pngs/flamegraph(update_1).svg)
 
-![SecondVersion](https://github.com/TC5027/blog/blob/master/pngs/flamegraph(update_2).svg)](https://github.com/TC5027/blog/blob/master/pngs/flamegraph(update_2).svg)
+[![SecondVersion](https://github.com/TC5027/blog/blob/master/pngs/flamegraph(update_2).svg)](https://github.com/TC5027/blog/blob/master/pngs/flamegraph(update_2).svg)
 
-![ThirdVersion](https://github.com/TC5027/blog/blob/master/pngs/flamegraph(update_3).svg)](https://github.com/TC5027/blog/blob/master/pngs/flamegraph(update_3).svg)
+[![ThirdVersion](https://github.com/TC5027/blog/blob/master/pngs/flamegraph(update_3).svg)](https://github.com/TC5027/blog/blob/master/pngs/flamegraph(update_3).svg)
 
 
 Zooming on the ```update_X``` function in the flamegraphs we see that there is a huge part for 1 and 3 due to dropping the ```Vec```s. I changed the signatures of ```update_1``` and ```update_3``` to take as input references to avoid the drops inside these functions.
 
 The results we get now for time of execution.
 
-update_1 -> 235.201796ms 239.38725ms 234.74462ms 235.550715ms 241.097017ms
-update_3 -> 288.582635ms 302.115826ms 287.761127ms 289.621371ms 292.264621ms
+* update_1 -> 237.20ms (min 234.74462ms | max 241.097017ms)
+* update_3 -> 292.08ms (min 287.76112ms | max 302.115826ms)
 
 How can we explain these results ? We can use callgrind with simulate-cache to get an idea on how our program interact with cache mechanism. Except that using callgrind directly on our whole program wouldn't be pertinent as before calling ```update_X``` there is a huge step for preparing the data which differs according to the version.
 
@@ -237,6 +237,7 @@ fn update_1(products: &mut [Product]) {
 ```
 
 The results we get.
+```
 ==8081== Events    : Ir Dr Dw I1mr D1mr D1mw ILmr DLmr DLmw
 ==8081== Collected : 3380143077 877190514 554857177 69 27501666 5 69 27501666 5
 ==8081== 
@@ -255,6 +256,7 @@ The results we get.
 ==8081== LL refs:          27,501,740  ( 27,501,735 rd +           5 wr)
 ==8081== LL misses:        27,501,740  ( 27,501,735 rd +           5 wr)
 ==8081== LL miss rate:            0.6% (        0.6%   +         0.0%  )
+```
 
 
 For ```update_2``` writing a start/stop at the beginning/end of the function doesn't work, I guess because of the multi thread aspect. Reading callgrind documentation (https://valgrind.org/docs/manual/cl-manual.html) there is an option we could use : --separate-threads. What I have done :
@@ -287,6 +289,7 @@ fn update_2(subpart1: &mut [Product], subpart2: &mut [Product]) {
 
 And I launched ```valgrind --tool=callgrind --collect-atstart=no --instr-atstart=no --simulate-cache=yes --separate-threads=yes ./target/release/updates```.
 I'm not totally sure of my methodology here so feel free to contact me if I'm wrong. The results we get.
+```
 ==9066== Events    : Ir Dr Dw I1mr D1mr D1mw ILmr DLmr DLmw
 ==9066== Collected : 3519816954 918858923 608191726 424 27501869 87 423 27501869 87
 ==9066== 
@@ -305,8 +308,10 @@ I'm not totally sure of my methodology here so feel free to contact me if I'm wr
 ==9066== LL refs:          27,502,380  ( 27,502,293 rd +          87 wr)
 ==9066== LL misses:        27,502,379  ( 27,502,292 rd +          87 wr)
 ==9066== LL miss rate:            0.5% (        0.6%   +         0.0%  )
+```
 
 Following the same methodology for ```update_3``` we get.
+```
 ==10101== Events    : Ir Dr Dw I1mr D1mr D1mw ILmr DLmr DLmw
 ==10101== Collected : 3553821924 910002896 608192648 447 29501476 133 447 29501476 133
 ==10101== 
@@ -325,6 +330,7 @@ Following the same methodology for ```update_3``` we get.
 ==10101== LL refs:          29,502,056  ( 29,501,923 rd +         133 wr)
 ==10101== LL misses:        29,502,056  ( 29,501,923 rd +         133 wr)
 ==10101== LL miss rate:            0.6% (        0.7%   +         0.0%  )
+```
 
-What we see is that there are less instructions executed for ```update_1```, probably due to the overhead of thread creation? Doing less work takes less time also. Otherwise we don't see much difference between ```update_2``` and ```update_3``` callgrind results.
+What we see is that there are less instructions executed for ```update_1```, probably due to the overhead of thread creation? Doing less work takes less time I guess. Otherwise we don't see much difference between ```update_2``` and ```update_3``` callgrind results.
 

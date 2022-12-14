@@ -102,7 +102,7 @@ fn update_3(mut sproduct1s: Vec<SubProduct1>, mut sproduct2s: Vec<SubProduct2>) 
 }
 ```
 
-What would the best choice in terms of performance and why ? Of course it depends on the functions ```process_name```, ```process_price```, ```process_vendor``` and ```process_production_site```. We will work with this.
+What would be the best choice in terms of performance and why ? Of course it depends on the functions ```process_name```, ```process_price```, ```process_vendor``` and ```process_production_site```. We will work with this.
 
 ```rust
 fn process_name(name: &mut String) {
@@ -168,10 +168,13 @@ There are huge differences in the results but do we measure the same thing every
 To inspect that we can use ```cargo flamegraph```, here is what we get
 
 [![FirstVersion](https://github.com/TC5027/blog/blob/master/pngs/flamegraph(update_1).svg)](https://github.com/TC5027/blog/blob/master/pngs/flamegraph(update_1).svg)
+*update_1*
 
 [![SecondVersion](https://github.com/TC5027/blog/blob/master/pngs/flamegraph(update_2).svg)](https://github.com/TC5027/blog/blob/master/pngs/flamegraph(update_2).svg)
+*update_2*
 
 [![ThirdVersion](https://github.com/TC5027/blog/blob/master/pngs/flamegraph(update_3).svg)](https://github.com/TC5027/blog/blob/master/pngs/flamegraph(update_3).svg)
+*update_3*
 
 
 Zooming on the ```update_X``` function in the flamegraphs we see that there is a huge part for 1 and 3 due to dropping the ```Vec```s. I changed the signatures of ```update_1``` and ```update_3``` to take as input references to avoid the drops inside these functions.

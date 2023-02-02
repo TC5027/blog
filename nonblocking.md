@@ -95,5 +95,5 @@ The availability is quite satisfying (the server is clearly not the most complic
 * https://www.zupzup.org/epoll-with-rust/
 * https://man7.org/linux/man-pages/man7/epoll.7.html
 * https://linux.die.net/man/1/siege
-
+* https://twitter.com/alexxubyte/status/1553033085133852672
 

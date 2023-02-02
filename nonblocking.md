@@ -8,7 +8,7 @@ When calling a syscall like ```open("file.txt")``` the output is an int correspo
 Index 0, 1 and 2 are reserved for stdin, stdout and stderr.
 
 At the kernel level we have
-
+```
 Process table         Open file table             inode or vnode table       
 -----                 -----                       -----
 pid : ...         |-> file status flags : ... |-> file type : ...
@@ -34,7 +34,7 @@ Inode table                                                         |
 metadata         <--------------------------------------------------|
 block pointers (as files are stored as blocks)
 -----
-
+```
 ## Nonblocking
 
 By default, read on any descriptor blocks if there's no data available. Any descriptor can be put in the nonblocking mode, in which case an I/O system call on that descriptor will return immediately one of:
@@ -46,15 +46,19 @@ We say that a descriptor is ready if a process can perform an I/O operation on i
 
 There are 2 triggering methods for interrupts to act on the readiness status of a descriptor:
 * Edge-triggered interrupt : signaled by a level transition
+```
    |-----|
    |     |
 ---|     |---
    ^
+```
 * Level-triggered interrupt : hold while at a specific level
+```
    |-----|
    |     |
 ---|     |---
     ^^^^^
+```
 
 In the case of a web server we have to multiplex I/O on multiple file descriptors and **epoll** helps us to do so efficiently.
 

@@ -7,8 +7,9 @@ These descriptors are created by system calls like ```socket```,... or inherited
 When calling a syscall like ```open("file.txt")``` the output is an int corresponding to a file descriptor. More precisely it corresponds to an index for the file descriptor table specific to the process. 
 Index 0, 1 and 2 are reserved for stdin, stdout and stderr.
 
-At the kernel level we have
 ```
+At the kernel level we have
+
 Process table         Open file table             inode or vnode table       
 -----                 -----                       -----
 pid : ...         |-> file status flags : ... |-> file type : ...
